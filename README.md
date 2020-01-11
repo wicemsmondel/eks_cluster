@@ -1,2 +1,2 @@
-# eks_cluster
-Creating an AWS EKS cluster using Jenkins
+# EKS CLUSTER
+## Create an AWS EKS cluster using Jenkins
