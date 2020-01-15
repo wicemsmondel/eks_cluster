@@ -71,14 +71,29 @@ node {
         }
         stage ('Install Prometheus') {
             sh'''
-            echo '########## INSTALLING HELM ##########'
-            helm install prometheus stable/prometheus  --namespace prometheus
+            echo '########## INSTALLING PROMETHEUS ##########'
+            helm install prometheus stable/prometheus --namespace prometheus --set alertmanager.persistentVolume.storageClass="gp2" --set server.persistentVolume.storageClass="gp2"
             '''
         }
         stage ('Create namespace Grafana') {
             sh'''
             echo '########## CREATING GRAFANA NAMESPACE ##########'
             kubectl create namespace grafana
+            '''
+        }
+        stage('Install Grafana') {
+            sh '''
+            echo '########## INSTALLING GRAFANA ##########'
+            aws s3 cp s3://wicem-grafana/grafana-values.yaml grafana-values.yaml
+            helm install grafana stable/grafana --set service.type=LoadBalancer --set persistence.enabled=true --namespace grafana
+            '''
+        }
+        stage('Get Grafana config'){
+            sleep 30
+            sh'''
+            echo '########## CHECKING GRAFANA ##########'
+            kubectl get secret --namespace grafana grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+            kubectl get svc --namespace grafana
             '''
         }
     }
