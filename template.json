@@ -1,0 +1,219 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "EKS nodes (AMI family: AmazonLinux2, SSH access: false, private networking: false) [created and managed by eksctl]",
+    "Resources": {
+        "EgressInterCluster": {
+            "Type": "AWS::EC2::SecurityGroupEgress",
+            "Properties": {
+                "Description": "Allow control plane to communicate with worker nodes in group wicem-ng (kubelet and workload TCP ports)",
+                "DestinationSecurityGroupId": {
+                    "Ref": "SG"
+                },
+                "FromPort": 1025,
+                "GroupId": {
+                    "Fn::ImportValue": "eksctl-wicem-eks--cluster::SecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "ToPort": 65535
+            }
+        },
+        "EgressInterClusterAPI": {
+            "Type": "AWS::EC2::SecurityGroupEgress",
+            "Properties": {
+                "Description": "Allow control plane to communicate with worker nodes in group wicem-ng (workloads using HTTPS port, commonly used with extension API servers)",
+                "DestinationSecurityGroupId": {
+                    "Ref": "SG"
+                },
+                "FromPort": 443,
+                "GroupId": {
+                    "Fn::ImportValue": "eksctl-wicem-eks--cluster::SecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "ToPort": 443
+            }
+        },
+        "IngressInterCluster": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "Description": "Allow worker nodes in group wicem-ng to communicate with control plane (kubelet and workload TCP ports)",
+                "FromPort": 1025,
+                "GroupId": {
+                    "Ref": "SG"
+                },
+                "IpProtocol": "tcp",
+                "SourceSecurityGroupId": {
+                    "Fn::ImportValue": "eksctl-wicem-eks--cluster::SecurityGroup"
+                },
+                "ToPort": 65535
+            }
+        },
+        "IngressInterClusterAPI": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "Description": "Allow worker nodes in group wicem-ng to communicate with control plane (workloads using HTTPS port, commonly used with extension API servers)",
+                "FromPort": 443,
+                "GroupId": {
+                    "Ref": "SG"
+                },
+                "IpProtocol": "tcp",
+                "SourceSecurityGroupId": {
+                    "Fn::ImportValue": "eksctl-wicem-eks--cluster::SecurityGroup"
+                },
+                "ToPort": 443
+            }
+        },
+        "IngressInterClusterCP": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "Description": "Allow control plane to receive API requests from worker nodes in group wicem-ng",
+                "FromPort": 443,
+                "GroupId": {
+                    "Fn::ImportValue": "eksctl-wicem-eks--cluster::SecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "SourceSecurityGroupId": {
+                    "Ref": "SG"
+                },
+                "ToPort": 443
+            }
+        },
+        "NodeGroup": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Properties": {
+                "DesiredCapacity": "1",
+                "LaunchTemplate": {
+                    "LaunchTemplateName": {
+                        "Fn::Sub": "${AWS::StackName}"
+                    },
+                    "Version": {
+                        "Fn::GetAtt": "NodeGroupLaunchTemplate.LatestVersionNumber"
+                    }
+                },
+                "MaxSize": "1",
+                "MinSize": "1",
+                "Tags": [{
+                    "Key": "Name",
+                    "PropagateAtLaunch": "true",
+                    "Value": "wicem-eks--wicem-ng-Node"
+                }, {
+                    "Key": "kubernetes.io/cluster/wicem-eks-",
+                    "PropagateAtLaunch": "true",
+                    "Value": "owned"
+                }],
+                "VPCZoneIdentifier": {
+                    "Fn::Split": [",", {
+                        "Fn::ImportValue": "eksctl-wicem-eks--cluster::SubnetsPublic"
+                    }]
+                }
+            },
+            "UpdatePolicy": {
+                "AutoScalingRollingUpdate": {
+                    "MaxBatchSize": "1",
+                    "MinInstancesInService": "0"
+                }
+            }
+        },
+        "NodeGroupLaunchTemplate": {
+            "Type": "AWS::EC2::LaunchTemplate",
+            "Properties": {
+                "LaunchTemplateData": {
+                    "IamInstanceProfile": {
+                        "Arn": {
+                            "Fn::GetAtt": "NodeInstanceProfile.Arn"
+                        }
+                    },
+                    "ImageId": "ami-0b9d2c11b47bd8264",
+                    "InstanceType": "t3.medium",
+                    "NetworkInterfaces": [{
+                        "AssociatePublicIpAddress": true,
+                        "DeviceIndex": 0,
+                        "Groups": [{
+                            "Fn::ImportValue": "eksctl-wicem-eks--cluster::SharedNodeSecurityGroup"
+                        }, {
+                            "Ref": "SG"
+                        }]
+                    }],
+                    "UserData": "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"
+                },
+                "LaunchTemplateName": {
+                    "Fn::Sub": "${AWS::StackName}"
+                }
+            }
+        },
+        "NodeInstanceProfile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "Path": "/",
+                "Roles": [{
+                    "Ref": "NodeInstanceRole"
+                }]
+            }
+        },
+        "NodeInstanceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [{
+                        "Action": ["sts:AssumeRole"],
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": ["ec2.amazonaws.com"]
+                        }
+                    }],
+                    "Version": "2012-10-17"
+                },
+                "ManagedPolicyArns": ["arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy", "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy", "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"],
+                "Path": "/"
+            }
+        },
+        "SG": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Communication between the control plane and worker nodes in group wicem-ng",
+                "Tags": [{
+                    "Key": "kubernetes.io/cluster/wicem-eks-",
+                    "Value": "owned"
+                }, {
+                    "Key": "Name",
+                    "Value": {
+                        "Fn::Sub": "${AWS::StackName}/SG"
+                    }
+                }],
+                "VpcId": {
+                    "Fn::ImportValue": "eksctl-wicem-eks--cluster::VPC"
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "FeatureLocalSecurityGroup": {
+            "Value": true
+        },
+        "FeaturePrivateNetworking": {
+            "Value": false
+        },
+        "FeatureSharedSecurityGroup": {
+            "Value": true
+        },
+        "InstanceProfileARN": {
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}::InstanceProfileARN"
+                }
+            },
+            "Value": {
+                "Fn::GetAtt": "NodeInstanceProfile.Arn"
+            }
+        },
+        "InstanceRoleARN": {
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}::InstanceRoleARN"
+                }
+            },
+            "Value": {
+                "Fn::GetAtt": "NodeInstanceRole.Arn"
+            }
+        }
+    }
+}
